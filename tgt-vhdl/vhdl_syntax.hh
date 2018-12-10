@@ -245,6 +245,16 @@ private:
    int64_t value_;
 };
 
+class vhdl_const_real : public vhdl_expr {
+public:
+   explicit vhdl_const_real(float value)
+      : vhdl_expr(vhdl_type::real(), true), value_(value) {}
+   void emit(std::ostream &of, int level) const;
+   vhdl_expr *to_vector(vhdl_type_name_t name, int w);
+private:
+   double value_;
+};
+
 class vhdl_const_bool : public vhdl_expr {
 public:
    explicit vhdl_const_bool(bool value)

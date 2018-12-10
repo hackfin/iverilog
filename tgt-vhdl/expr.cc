@@ -136,6 +136,14 @@ static vhdl_expr *translate_ulong(ivl_expr_t e)
    return new vhdl_const_int(ivl_expr_uvalue(e));
 }
 
+/*
+ * Translate to real
+ */
+static vhdl_expr *translate_real(ivl_expr_t e)
+{
+   return new vhdl_const_real(ivl_expr_dvalue(e));
+}
+
 static vhdl_expr *translate_delay(ivl_expr_t e)
 {
    return scale_time(get_active_entity(), ivl_expr_delay_val(e));
@@ -197,8 +205,8 @@ static vhdl_expr *translate_unary(ivl_expr_t e)
    case 'X':   // XNOR
       return translate_reduction(SF_REDUCE_XNOR, false, operand);
    default:
-      error("No translation for unary opcode '%c'\n",
-            ivl_expr_opcode(e));
+		error("No VHDL translation for unary opcode '%c' at %s:%d",
+			ivl_expr_opcode(e), ivl_expr_file(e), ivl_expr_lineno(e));
       delete operand;
       return NULL;
    }
@@ -665,6 +673,24 @@ vhdl_expr *translate_sfunc_fopen(ivl_expr_t)
    return result;
 }
 
+vhdl_expr *translate_int_to_real(ivl_expr_t e)
+{
+   int width = ivl_expr_width(e);
+
+   vhdl_expr *arg = translate_expr(ivl_expr_parm(e, 0));
+
+   vhdl_type *type = ivl_expr_signed(e)
+      ? vhdl_type::nsigned(width) : vhdl_type::nunsigned(width);
+
+   vhdl_fcall *conv = new vhdl_fcall("To_Real", type);
+   vhdl_fcall *conv1 = new vhdl_fcall("To_Float", type);
+	conv->add_expr(conv1);
+	conv1->add_expr(arg);
+
+   return conv;
+}
+
+
 vhdl_expr *translate_sfunc(ivl_expr_t e)
 {
    const char *name = ivl_expr_name(e);
@@ -678,6 +704,8 @@ vhdl_expr *translate_sfunc(ivl_expr_t e)
       return translate_sfunc_random(e);
    else if (strcmp(name, "$fopen") == 0)
       return translate_sfunc_random(e);
+   else if (strcmp(name, "$itor") == 0)
+      return translate_int_to_real(e);
    else {
       error("No translation for system function %s", name);
       return NULL;
@@ -718,9 +746,7 @@ vhdl_expr *translate_expr(ivl_expr_t e)
    case IVL_EX_DELAY:
       return translate_delay(e);
    case IVL_EX_REALNUM:
-      error("No VHDL translation for real expression at %s:%d",
-            ivl_expr_file(e), ivl_expr_lineno(e));
-      return NULL;
+      return translate_real(e);
    default:
       error("No VHDL translation for expression at %s:%d (type = %d)",
             ivl_expr_file(e), ivl_expr_lineno(e), type);

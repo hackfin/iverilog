@@ -222,6 +222,13 @@ vhdl_expr *vhdl_expr::to_std_ulogic()
    return NULL;
 }
 
+vhdl_expr *vhdl_const_real::to_vector(vhdl_type_name_t name, int w)
+{
+   error("Conversion from real to vector currently not supported");
+   return NULL;
+}
+
+
 /*
  * Change the width of a signed/unsigned type.
  */

@@ -30,6 +30,8 @@
 
 using namespace std;
 
+extern int g_vhdl_std;
+
 vhdl_scope::vhdl_scope()
    : parent_(NULL), init_(false), sig_assign_(true),
      hoisted_init_(false)
@@ -135,6 +137,10 @@ void vhdl_entity::emit(std::ostream &of, int level) const
    of << "library ieee;" << std::endl;
    of << "use ieee.std_logic_1164.all;" << std::endl;
    of << "use ieee.numeric_std.all;" << std::endl;
+   if (g_vhdl_std == 2008) {
+      of << "use ieee.float_pkg.all;" << std::endl;
+   }
+
    of << std::endl;
 
    emit_comment(of, level);
@@ -729,6 +735,11 @@ void vhdl_const_int::emit(std::ostream &of, int) const
 {
    of << dec << value_;
    // We need to find a way to display a comment, since $time, etc. add one.
+}
+
+void vhdl_const_real::emit(std::ostream &of, int) const
+{
+   of << fixed << value_;
 }
 
 void vhdl_const_bool::emit(std::ostream &of, int) const

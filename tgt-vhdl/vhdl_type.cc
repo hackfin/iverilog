@@ -54,6 +54,11 @@ vhdl_type *vhdl_type::integer()
    return new vhdl_type(VHDL_TYPE_INTEGER);
 }
 
+vhdl_type *vhdl_type::real()
+{
+   return new vhdl_type(VHDL_TYPE_REAL, 31, 0);
+}
+
 vhdl_type *vhdl_type::nunsigned(int width, int lsb)
 {
    return new vhdl_type(VHDL_TYPE_UNSIGNED, width-1+lsb, lsb);
@@ -101,6 +106,8 @@ std::string vhdl_type::get_string() const
       return std::string("signed");
    case VHDL_TYPE_UNSIGNED:
       return std::string("unsigned");
+   case VHDL_TYPE_REAL:
+      return std::string("real");
    case VHDL_TYPE_ARRAY:
       // Each array has its own type declaration
       return array_name_;
@@ -176,7 +183,7 @@ vhdl_type *vhdl_type::std_logic_vector(int msb, int lsb)
 vhdl_type *vhdl_type::type_for(int width, bool issigned,
                                int lsb, bool unresolved)
 {
-   if (width == 1) {
+	if (width == 1) {
       if (unresolved)
          return vhdl_type::std_ulogic();
       else

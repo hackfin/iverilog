@@ -67,6 +67,7 @@ struct signal_defn_t {
 // encountered and hence it will appear first in the output file.
 static entity_list_t g_entities;
 
+
 // Store the mapping of ivl scope names to entity names
 typedef map<ivl_scope_t, string> scope_name_map_t;
 static scope_name_map_t g_scope_names;

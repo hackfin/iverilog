@@ -566,6 +566,9 @@ static void declare_one_signal(vhdl_entity *ent, ivl_signal_t sig,
 
       sig_type = new vhdl_type(*array_type);
    }
+   else if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
+      sig_type = vhdl_type::real();
+   }
    else {
       sig_type = vhdl_type::type_for(ivl_signal_width(sig),
                                      ivl_signal_signed(sig) != 0,
