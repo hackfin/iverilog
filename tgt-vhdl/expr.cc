@@ -204,6 +204,10 @@ static vhdl_expr *translate_unary(ivl_expr_t e)
       return translate_reduction(SF_REDUCE_XOR, false, operand);
    case 'X':   // XNOR
       return translate_reduction(SF_REDUCE_XNOR, false, operand);
+   case 'v':   // Cast to 32 bit int
+      return translate_expr(ivl_expr_oper1(e));
+   case 'r':   // Cast to real
+      return translate_expr(ivl_expr_oper1(e));
    default:
 		error("No VHDL translation for unary opcode '%c' at %s:%d",
 			ivl_expr_opcode(e), ivl_expr_file(e), ivl_expr_lineno(e));
@@ -635,10 +639,15 @@ static vhdl_expr *translate_concat(ivl_expr_t e)
 
 vhdl_expr *translate_sfunc_time(ivl_expr_t)
 {
-   cerr << "warning: no translation for $time (returning 0)" << endl;
-   vhdl_expr *result = new vhdl_const_int(0);
-   result->set_comment("$time not supported, returned 0 instead!");
-   return result;
+//   cerr << "warning: no translation for $time (returning 0)" << endl;
+//   vhdl_expr *result = new vhdl_const_int(0);
+//   result->set_comment("$time not supported, returned 0 instead!");
+
+   vhdl_fcall *conv = new vhdl_fcall("To_Real", vhdl_type::real());
+
+   vhdl_expr *arg = new vhdl_var_ref("NOW", vhdl_type::real());
+   conv->add_expr(arg);
+	return conv;
 }
 
 vhdl_expr *translate_sfunc_stime(ivl_expr_t)

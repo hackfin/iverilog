@@ -62,6 +62,8 @@ vhdl_expr *vhdl_expr::cast(const vhdl_type *to)
          return to_std_ulogic();
       case VHDL_TYPE_STRING:
          return to_string();
+      case VHDL_TYPE_REAL:
+         return to_string();
       default:
          assert(false);
       }
@@ -205,6 +207,9 @@ vhdl_expr *vhdl_expr::to_std_logic()
       ah->add_expr(this);
 
       return ah;
+   }
+   else if (type_->get_name() == VHDL_TYPE_REAL) {
+      return this;
    }
    assert(false);
    return NULL;
