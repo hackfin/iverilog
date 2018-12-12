@@ -164,7 +164,6 @@ void draw_nexus(ivl_nexus_t nexus)
    // First pass through connect all the signals up
    for (int i = 0; i < nptrs; i++) {
       ivl_nexus_ptr_t nexus_ptr = ivl_nexus_ptr(nexus, i);
-
       ivl_signal_t sig;
       if ((sig = ivl_nexus_ptr_sig(nexus_ptr))) {
          vhdl_scope *scope = find_scope_for_signal(sig);
@@ -172,6 +171,8 @@ void draw_nexus(ivl_nexus_t nexus)
             unsigned pin = ivl_nexus_ptr_pin(nexus_ptr);
             link_scope_to_nexus_signal(priv, scope, sig, pin);
          }
+
+ 
 
          nexus_signal_width = ivl_signal_width(sig);
       }
@@ -309,10 +310,10 @@ void draw_nexus(ivl_nexus_t nexus)
       ivl_nexus_ptr_t ptr = ivl_nexus_ptr(nexus, 0);
       ivl_signal_t sig = ivl_nexus_ptr_sig(ptr);
 
-      if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
-         priv->const_driver = new vhdl_const_real(0.0);
-      } else
       if (def) {
+         if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
+            priv->const_driver = new vhdl_const_real(0.0);
+         } else
          if (width > 1)
             priv->const_driver =
                new vhdl_bit_spec_expr(vhdl_type::std_logic(),
@@ -1103,6 +1104,7 @@ extern "C" int draw_constant_drivers(ivl_scope_t scope, void *)
                assert(j == 0);   // TODO: Make work for more words
 
                vhdl_var_ref *ref = nexus_to_var_ref(arch_scope, nex);
+
 
                ent->get_arch()->add_stmt
                   (new vhdl_cassign_stmt(ref, priv->const_driver));

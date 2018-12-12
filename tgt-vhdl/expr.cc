@@ -226,10 +226,18 @@ static vhdl_expr *translate_numeric(vhdl_expr *lhs, vhdl_expr *rhs,
    // May need to make either side Boolean for operators
    // to work
    vhdl_type boolean(VHDL_TYPE_BOOLEAN);
+   vhdl_type real(VHDL_TYPE_REAL);
    if (lhs->get_type()->get_name() == VHDL_TYPE_BOOLEAN)
       rhs = rhs->cast(&boolean);
    else if (rhs->get_type()->get_name() == VHDL_TYPE_BOOLEAN)
       lhs = lhs->cast(&boolean);
+	else
+   if (lhs->get_type()->get_name() == VHDL_TYPE_REAL
+	    )
+      rhs = rhs->cast(&real);
+   else if (rhs->get_type()->get_name() == VHDL_TYPE_REAL
+	    )
+      lhs = lhs->cast(&real);
 
    vhdl_type *rtype;
    if (op == VHDL_BINOP_MULT)
@@ -639,15 +647,12 @@ static vhdl_expr *translate_concat(ivl_expr_t e)
 
 vhdl_expr *translate_sfunc_time(ivl_expr_t)
 {
-//   cerr << "warning: no translation for $time (returning 0)" << endl;
-//   vhdl_expr *result = new vhdl_const_int(0);
-//   result->set_comment("$time not supported, returned 0 instead!");
+   vhdl_expr *now = new vhdl_var_ref("now", vhdl_type::time());
 
-   vhdl_fcall *conv = new vhdl_fcall("To_Real", vhdl_type::real());
+	vhdl_expr *time_unit = scale_time(get_active_entity(), 1);
+	vhdl_expr *arg = translate_numeric(now, time_unit, VHDL_BINOP_DIV);
 
-   vhdl_expr *arg = new vhdl_var_ref("NOW", vhdl_type::real());
-   conv->add_expr(arg);
-	return conv;
+	return arg;
 }
 
 vhdl_expr *translate_sfunc_stime(ivl_expr_t)
@@ -684,15 +689,10 @@ vhdl_expr *translate_sfunc_fopen(ivl_expr_t)
 
 vhdl_expr *translate_int_to_real(ivl_expr_t e)
 {
-   int width = ivl_expr_width(e);
-
    vhdl_expr *arg = translate_expr(ivl_expr_parm(e, 0));
 
-   vhdl_type *type = ivl_expr_signed(e)
-      ? vhdl_type::nsigned(width) : vhdl_type::nunsigned(width);
-
-   vhdl_fcall *conv = new vhdl_fcall("To_Real", type);
-   vhdl_fcall *conv1 = new vhdl_fcall("To_Float", type);
+   vhdl_fcall *conv = new vhdl_fcall("To_Real",  vhdl_type::real());
+   vhdl_fcall *conv1 = new vhdl_fcall("To_Float", vhdl_type::real());
 	conv->add_expr(conv1);
 	conv1->add_expr(arg);
 

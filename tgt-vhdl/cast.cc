@@ -63,7 +63,7 @@ vhdl_expr *vhdl_expr::cast(const vhdl_type *to)
       case VHDL_TYPE_STRING:
          return to_string();
       case VHDL_TYPE_REAL:
-         return to_string();
+         return to_real();
       default:
          assert(false);
       }
@@ -111,6 +111,9 @@ vhdl_expr *vhdl_expr::to_integer()
       require_support_function(SF_LOGIC_TO_INTEGER);
       conv = new vhdl_fcall(support_function::function_name(SF_LOGIC_TO_INTEGER),
                             vhdl_type::integer());
+   }
+   else if (type_->get_name() == VHDL_TYPE_REAL) {
+      return this;
    }
    else
       conv = new vhdl_fcall("To_Integer", vhdl_type::integer());
@@ -208,9 +211,6 @@ vhdl_expr *vhdl_expr::to_std_logic()
 
       return ah;
    }
-   else if (type_->get_name() == VHDL_TYPE_REAL) {
-      return this;
-   }
    assert(false);
    return NULL;
 }
@@ -225,6 +225,32 @@ vhdl_expr *vhdl_expr::to_std_ulogic()
    else
       assert(false);
    return NULL;
+}
+
+
+vhdl_expr *vhdl_expr::to_real()
+{
+   vhdl_fcall *f = NULL;
+   switch (type_->get_name()) {
+      case VHDL_TYPE_INTEGER:
+         f = new vhdl_fcall("real", vhdl_type::real());
+         f->add_expr(this);
+         break;
+      case VHDL_TYPE_UNSIGNED:
+      case VHDL_TYPE_SIGNED:
+      case VHDL_TYPE_STD_LOGIC_VECTOR:
+         f = new vhdl_fcall("real", vhdl_type::real());
+         f->add_expr(to_integer());
+         break;
+      case VHDL_TYPE_TIME:
+         f = new vhdl_fcall("real", vhdl_type::real());
+         f->add_expr(this);
+         break;
+      default:
+         error("Conversion to real for type %d not possible",
+            type_->get_name());
+   }
+   return f;
 }
 
 vhdl_expr *vhdl_const_real::to_vector(vhdl_type_name_t name, int w)
