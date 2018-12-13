@@ -22,7 +22,7 @@ int draw_stmt(vhdl_procedural *proc, stmt_container *container,
 int draw_lpm(vhdl_arch *arch, ivl_lpm_t lpm);
 void draw_logic(vhdl_arch *arch, ivl_net_logic_t log);
 
-vhdl_expr *translate_expr(ivl_expr_t e);
+vhdl_expr *translate_expr(ivl_expr_t e, bool declaration = false);
 vhdl_expr *translate_time_expr(ivl_expr_t e);
 
 ivl_design_t get_vhdl_design();

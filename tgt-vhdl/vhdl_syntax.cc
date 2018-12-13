@@ -125,10 +125,30 @@ vhdl_entity::~vhdl_entity()
 
 }
 
+vhdl_scope *vhdl_entity::get_scope(enum entity_scope_t which)
+{
+   switch (which) {
+      case 0:
+         return &ports_;   
+      default:
+         return &generics_;   
+   }
+}
+
+
 void vhdl_entity::add_port(vhdl_port_decl *decl)
 {
    ports_.add_decl(decl);
 }
+
+void vhdl_entity::add_generic(vhdl_generic_decl *decl)
+{
+   cout << "Add generic " << decl->get_name().c_str();
+   cout << " type " << decl->get_type() << " initial: " << decl->has_initial();
+   cout << "\n";
+   generics_.add_decl(decl);
+}
+
 
 void vhdl_entity::emit(std::ostream &of, int level) const
 {
@@ -145,6 +165,13 @@ void vhdl_entity::emit(std::ostream &of, int level) const
 
    emit_comment(of, level);
    of << "entity " << name_ << " is";
+
+   if (!generics_.empty()) {
+      newline(of, indent(level));
+      of << "generic (";
+      emit_children<vhdl_decl>(of, generics_.get_decls(), indent(level), ";");
+      of << ");";
+   }
 
    if (!ports_.empty()) {
       newline(of, indent(level));
@@ -314,6 +341,12 @@ void vhdl_comp_inst::map_port(const string& name, vhdl_expr *expr)
    mapping_.push_back(pmap);
 }
 
+void vhdl_comp_inst::map_generic(const string& name, vhdl_expr *expr)
+{
+   port_map_t gmap = { name, expr };
+   gen_mapping_.push_back(gmap);
+}
+
 void vhdl_comp_inst::emit(std::ostream &of, int level) const
 {
    newline(of, level);
@@ -321,6 +354,23 @@ void vhdl_comp_inst::emit(std::ostream &of, int level) const
    of << inst_name_ << ": " << comp_name_;
 
    // If there are no ports or generics we don't need to mention them...
+   if (! gen_mapping_.empty()) {
+      newline(of, indent(level));
+      of << "generic map (";
+
+      int sz = gen_mapping_.size();
+      port_map_list_t::const_iterator it;
+      for (it = gen_mapping_.begin(); it != gen_mapping_.end(); ++it) {
+         newline(of, indent(indent(level)));
+         of << (*it).name << " => ";
+         (*it).expr->emit(of, level);
+         if (--sz > 0)
+            of << ",";
+      }
+      newline(of, indent(level));
+      of << ")";
+   }
+
    if (! mapping_.empty()) {
       newline(of, indent(level));
       of << "port map (";
@@ -357,7 +407,8 @@ vhdl_component_decl *vhdl_component_decl::component_decl_for(vhdl_entity *ent)
    vhdl_component_decl *decl = new vhdl_component_decl
       (ent->get_name().c_str());
 
-   decl->ports_ = ent->get_scope()->get_decls();
+   decl->ports_ = ent->get_scope(VHDL_ENT_SCOPE_PORTS)->get_decls();
+   decl->generics_ = ent->get_scope(VHDL_ENT_SCOPE_GENERICS)->get_decls();
 
    return decl;
 }
@@ -367,6 +418,13 @@ void vhdl_component_decl::emit(std::ostream &of, int level) const
    newline(of, level);
    emit_comment(of, level);
    of << "component " << name_ << " is";
+
+   if (! generics_.empty()) {
+      newline(of, indent(level));
+      of << "generic (";
+      emit_children<vhdl_decl>(of, generics_, indent(level), ";");
+      of << ");";
+   }
 
    if (! ports_.empty()) {
       newline(of, indent(level));
@@ -503,6 +561,19 @@ void vhdl_var_decl::emit(std::ostream &of, int level) const
    }
 
    of << ";";
+   emit_comment(of, level, true);
+}
+
+void vhdl_generic_decl::emit(std::ostream &of, int level) const
+{
+   of << name_ << " : ";
+   type_->emit(of, level);
+
+   if (initial_) {
+      of << " := ";
+      initial_->emit(of, level);
+   }
+   // No ';', this is done by the caller.
    emit_comment(of, level, true);
 }
 

@@ -412,6 +412,7 @@ void make_assignment(vhdl_procedural *proc, stmt_container *container,
                      vhdl_decl::assign_type_t& assign_type)
 {
    list<vhdl_var_ref*> lvals;
+
    if (!assignment_lvals(stmt, proc, lvals))
       return;
 
@@ -512,10 +513,15 @@ void make_assignment(vhdl_procedural *proc, stmt_container *container,
       // internal signals not ports
       ivl_lval_t lval = ivl_stmt_lval(stmt, 0);
       if (proc->get_scope()->initializing()
+
           && ivl_signal_port(ivl_lval_sig(lval)) == IVL_SIP_NONE
           && !decl->has_initial()
           && rhs->constant()
           && decl->get_type()->get_name() != VHDL_TYPE_ARRAY) {
+
+      debug_msg("ASSIGN INIT %s:%d",
+                ivl_stmt_file(stmt), ivl_stmt_lineno(stmt));
+
 
          // If this assignment is not in the top-level container
          // it will not be made on all paths through the code
