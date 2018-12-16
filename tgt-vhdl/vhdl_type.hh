@@ -34,6 +34,7 @@ enum vhdl_type_name_t {
    VHDL_TYPE_BOOLEAN,
    VHDL_TYPE_SIGNED,
    VHDL_TYPE_UNSIGNED,
+   VHDL_TYPE_REAL,
    VHDL_TYPE_TIME,
    VHDL_TYPE_ARRAY
 };
@@ -79,6 +80,7 @@ public:
    static vhdl_type *nunsigned(int width, int lsb=0);
    static vhdl_type *nsigned(int width, int lsb=0);
    static vhdl_type *integer();
+   static vhdl_type *real();
    static vhdl_type *boolean();
    static vhdl_type *time();
 

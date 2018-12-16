@@ -51,6 +51,7 @@ public:
    virtual vhdl_expr *to_integer();
    virtual vhdl_expr *to_std_logic();
    virtual vhdl_expr *to_std_ulogic();
+   virtual vhdl_expr *to_real();
    virtual vhdl_expr *to_vector(vhdl_type_name_t name, int w);
    virtual vhdl_expr *to_string();
    virtual void find_vars(vhdl_var_set_t&) {}
@@ -243,6 +244,16 @@ public:
    vhdl_expr *to_vector(vhdl_type_name_t name, int w);
 private:
    int64_t value_;
+};
+
+class vhdl_const_real : public vhdl_expr {
+public:
+   explicit vhdl_const_real(float value)
+      : vhdl_expr(vhdl_type::real(), true), value_(value) {}
+   void emit(std::ostream &of, int level) const;
+   vhdl_expr *to_vector(vhdl_type_name_t name, int w);
+private:
+   double value_;
 };
 
 class vhdl_const_bool : public vhdl_expr {
@@ -661,6 +672,7 @@ private:
    explicit vhdl_component_decl(const char *name);
 
    decl_list_t ports_;
+   decl_list_t generics_;
 };
 
 
@@ -683,6 +695,16 @@ public:
    assign_type_t assignment_type() const { return ASSIGN_BLOCK; }
 };
 
+/*
+ * A VHDL generic declaration
+ */
+class vhdl_generic_decl : public vhdl_decl {
+public:
+   vhdl_generic_decl(const char *name, vhdl_type *type)
+      : vhdl_decl(name, type) {}
+
+   void emit(std::ostream &of, int level) const;
+};
 
 /*
  * A signal declaration in architecture.
@@ -713,6 +735,7 @@ enum vhdl_port_mode_t {
    VHDL_PORT_INOUT,
    VHDL_PORT_BUFFER
 };
+
 
 /*
  * A port declaration is like a signal declaration except
@@ -756,12 +779,14 @@ public:
 
    void emit(std::ostream &of, int level) const;
    void map_port(const string& name, vhdl_expr *expr);
+   void map_generic(const string& name, vhdl_expr *expr);
 
    const std::string &get_comp_name() const { return comp_name_; }
    const std::string &get_inst_name() const { return inst_name_; }
 private:
    std::string comp_name_, inst_name_;
    port_map_list_t mapping_;
+   port_map_list_t gen_mapping_;
 };
 
 
@@ -892,6 +917,11 @@ private:
    std::string name_, entity_;
 };
 
+enum entity_scope_t {
+	VHDL_ENT_SCOPE_PORTS = 0,
+	VHDL_ENT_SCOPE_GENERICS
+};
+
 /*
  * An entity defines the ports, parameters, etc. of a module. Each
  * entity is associated with a single architecture (although
@@ -905,10 +935,11 @@ public:
 
    void emit(std::ostream &of, int level=0) const;
    void add_port(vhdl_port_decl *decl);
+   void add_generic(vhdl_generic_decl *decl);
    vhdl_arch *get_arch() const { return arch_; }
    const std::string &get_name() const { return name_; }
 
-   vhdl_scope *get_scope() { return &ports_; }
+   vhdl_scope *get_scope(enum entity_scope_t which = VHDL_ENT_SCOPE_PORTS);
 
    void set_time_units(int units, int precision);
    friend vhdl_const_time* scale_time(const vhdl_entity* ent, uint64_t t);
@@ -920,6 +951,7 @@ public:
 private:
    std::string name_;
    vhdl_arch *arch_;  // Entity may only have a single architecture
+   vhdl_scope generics_;
    vhdl_scope ports_;
 
    // Entities have an associated VHDL time unit

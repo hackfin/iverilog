@@ -49,6 +49,7 @@ static const char*version_string =
 "  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n"
 ;
 
+int g_vhdl_std = 1993;
 
 static int g_errors = 0;  // Total number of errors encountered
 static ivl_design_t g_design;
@@ -124,6 +125,8 @@ extern "C" int target_design(ivl_design_t des)
       // If max_depth is zero then all entities will be emitted
       // (This is handy since it means we can use atoi ;-)
       int max_depth = std::atoi(ivl_design_flag(des, "depth"));
+
+      g_vhdl_std = std::atoi(ivl_design_flag(des, "vhdlstd"));
 
       emit_all_entities(outfile, max_depth);
    }

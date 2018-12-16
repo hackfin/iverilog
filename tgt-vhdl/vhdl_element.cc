@@ -29,7 +29,7 @@
 
 using namespace std;
 
-static const int VHDL_INDENT = 2;  // Spaces to indent
+static const int VHDL_INDENT = 4;  // Spaces to indent
 
 int indent(int level)
 {

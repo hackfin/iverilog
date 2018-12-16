@@ -136,6 +136,14 @@ static vhdl_expr *translate_ulong(ivl_expr_t e)
    return new vhdl_const_int(ivl_expr_uvalue(e));
 }
 
+/*
+ * Translate to real
+ */
+static vhdl_expr *translate_real(ivl_expr_t e)
+{
+   return new vhdl_const_real(ivl_expr_dvalue(e));
+}
+
 static vhdl_expr *translate_delay(ivl_expr_t e)
 {
    return scale_time(get_active_entity(), ivl_expr_delay_val(e));
@@ -196,9 +204,13 @@ static vhdl_expr *translate_unary(ivl_expr_t e)
       return translate_reduction(SF_REDUCE_XOR, false, operand);
    case 'X':   // XNOR
       return translate_reduction(SF_REDUCE_XNOR, false, operand);
+//   case 'v':   // Cast to 32 bit int
+//      return translate_expr(ivl_expr_oper1(e));
+   case 'r':   // Cast to real
+      return translate_expr(ivl_expr_oper1(e));
    default:
-      error("No translation for unary opcode '%c'\n",
-            ivl_expr_opcode(e));
+		error("No VHDL translation for unary opcode '%c' at %s:%d",
+			ivl_expr_opcode(e), ivl_expr_file(e), ivl_expr_lineno(e));
       delete operand;
       return NULL;
    }
@@ -214,10 +226,18 @@ static vhdl_expr *translate_numeric(vhdl_expr *lhs, vhdl_expr *rhs,
    // May need to make either side Boolean for operators
    // to work
    vhdl_type boolean(VHDL_TYPE_BOOLEAN);
+   vhdl_type real(VHDL_TYPE_REAL);
    if (lhs->get_type()->get_name() == VHDL_TYPE_BOOLEAN)
       rhs = rhs->cast(&boolean);
    else if (rhs->get_type()->get_name() == VHDL_TYPE_BOOLEAN)
       lhs = lhs->cast(&boolean);
+	else
+   if (lhs->get_type()->get_name() == VHDL_TYPE_REAL
+	    )
+      rhs = rhs->cast(&real);
+   else if (rhs->get_type()->get_name() == VHDL_TYPE_REAL
+	    )
+      lhs = lhs->cast(&real);
 
    vhdl_type *rtype;
    if (op == VHDL_BINOP_MULT)
@@ -627,10 +647,12 @@ static vhdl_expr *translate_concat(ivl_expr_t e)
 
 vhdl_expr *translate_sfunc_time(ivl_expr_t)
 {
-   cerr << "warning: no translation for $time (returning 0)" << endl;
-   vhdl_expr *result = new vhdl_const_int(0);
-   result->set_comment("$time not supported, returned 0 instead!");
-   return result;
+   vhdl_expr *now = new vhdl_var_ref("now", vhdl_type::time());
+
+	vhdl_expr *time_unit = scale_time(get_active_entity(), 1);
+	vhdl_expr *arg = translate_numeric(now, time_unit, VHDL_BINOP_DIV);
+
+	return arg;
 }
 
 vhdl_expr *translate_sfunc_stime(ivl_expr_t)
@@ -665,6 +687,19 @@ vhdl_expr *translate_sfunc_fopen(ivl_expr_t)
    return result;
 }
 
+vhdl_expr *translate_int_to_real(ivl_expr_t e)
+{
+   vhdl_expr *arg = translate_expr(ivl_expr_parm(e, 0));
+
+   vhdl_fcall *conv = new vhdl_fcall("To_Real",  vhdl_type::real());
+   vhdl_fcall *conv1 = new vhdl_fcall("To_Float", vhdl_type::real());
+	conv->add_expr(conv1);
+	conv1->add_expr(arg);
+
+   return conv;
+}
+
+
 vhdl_expr *translate_sfunc(ivl_expr_t e)
 {
    const char *name = ivl_expr_name(e);
@@ -678,6 +713,8 @@ vhdl_expr *translate_sfunc(ivl_expr_t e)
       return translate_sfunc_random(e);
    else if (strcmp(name, "$fopen") == 0)
       return translate_sfunc_random(e);
+   else if (strcmp(name, "$itor") == 0)
+      return translate_int_to_real(e);
    else {
       error("No translation for system function %s", name);
       return NULL;
@@ -687,45 +724,80 @@ vhdl_expr *translate_sfunc(ivl_expr_t e)
 /*
  * Generate a VHDL expression from a Verilog expression.
  */
-vhdl_expr *translate_expr(ivl_expr_t e)
+vhdl_expr *translate_expr(ivl_expr_t e, bool declaration)
 {
    assert(e);
    ivl_expr_type_t type = ivl_expr_type(e);
+   // ivl_scope_t defscope = ivl_expr_def(e);
+   // ivl_scope_t parentscope = ivl_scope_parent(defscope);
 
-   switch (type) {
-   case IVL_EX_STRING:
-      return translate_string(e);
-   case IVL_EX_SIGNAL:
-      return translate_signal(e);
-   case IVL_EX_NUMBER:
-      return translate_number(e);
-   case IVL_EX_ULONG:
-      return translate_ulong(e);
-   case IVL_EX_UNARY:
-      return translate_unary(e);
-   case IVL_EX_BINARY:
-      return translate_binary(e);
-   case IVL_EX_SELECT:
-      return translate_select(e);
-   case IVL_EX_UFUNC:
-      return translate_ufunc(e);
-   case IVL_EX_TERNARY:
-      return translate_ternary(e);
-   case IVL_EX_CONCAT:
-      return translate_concat(e);
-   case IVL_EX_SFUNC:
-      return translate_sfunc(e);
-   case IVL_EX_DELAY:
-      return translate_delay(e);
-   case IVL_EX_REALNUM:
-      error("No VHDL translation for real expression at %s:%d",
-            ivl_expr_file(e), ivl_expr_lineno(e));
-      return NULL;
-   default:
-      error("No VHDL translation for expression at %s:%d (type = %d)",
-            ivl_expr_file(e), ivl_expr_lineno(e), type);
-      return NULL;
-   }
+	ivl_parameter_t p;
+
+	enum vhdl_type_name_t vhdltype;
+
+	p = ivl_expr_parameter(e);
+
+   // vhdl_decl *decl = scope->get_decl(renamed);
+   // assert(decl);
+
+	// TODO: Have to determine the scope of this expression
+	// so that we resolve it right
+
+	if (p && !declaration) {
+		// Don't resolve parameters anymore, create a variable ref
+		ivl_scope_t sc = ivl_parameter_scope(p);
+		debug_msg("Declaring para in scope %d", ivl_scope_type(sc));
+		
+		switch (type) {
+			case IVL_EX_NUMBER:
+				vhdltype = VHDL_TYPE_INTEGER; break;
+			case IVL_EX_REALNUM:
+				vhdltype = VHDL_TYPE_REAL; break;
+			case IVL_EX_STRING:
+				vhdltype = VHDL_TYPE_STRING; break;
+			default:
+				error("Parameter type %d unsupported at %s:%d",
+					type, ivl_expr_file(e), ivl_expr_lineno(e));
+				return NULL;
+		}
+		vhdl_var_ref *ref =
+			new vhdl_var_ref(ivl_parameter_basename(p),
+			new vhdl_type(vhdltype));
+		return ref;
+	} else {
+		switch (type) {
+		case IVL_EX_STRING:
+			return translate_string(e);
+		case IVL_EX_SIGNAL:
+			return translate_signal(e);
+		case IVL_EX_NUMBER:
+			return translate_number(e);
+		case IVL_EX_ULONG:
+			return translate_ulong(e);
+		case IVL_EX_UNARY:
+			return translate_unary(e);
+		case IVL_EX_BINARY:
+			return translate_binary(e);
+		case IVL_EX_SELECT:
+			return translate_select(e);
+		case IVL_EX_UFUNC:
+			return translate_ufunc(e);
+		case IVL_EX_TERNARY:
+			return translate_ternary(e);
+		case IVL_EX_CONCAT:
+			return translate_concat(e);
+		case IVL_EX_SFUNC:
+			return translate_sfunc(e);
+		case IVL_EX_DELAY:
+			return translate_delay(e);
+		case IVL_EX_REALNUM:
+			return translate_real(e);
+		default:
+			error("No VHDL translation for expression at %s:%d (type = %d)",
+					ivl_expr_file(e), ivl_expr_lineno(e), type);
+		}
+	}
+	return NULL;
 }
 
 /*

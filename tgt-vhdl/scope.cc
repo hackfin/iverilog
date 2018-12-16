@@ -164,7 +164,6 @@ void draw_nexus(ivl_nexus_t nexus)
    // First pass through connect all the signals up
    for (int i = 0; i < nptrs; i++) {
       ivl_nexus_ptr_t nexus_ptr = ivl_nexus_ptr(nexus, i);
-
       ivl_signal_t sig;
       if ((sig = ivl_nexus_ptr_sig(nexus_ptr))) {
          vhdl_scope *scope = find_scope_for_signal(sig);
@@ -172,6 +171,8 @@ void draw_nexus(ivl_nexus_t nexus)
             unsigned pin = ivl_nexus_ptr_pin(nexus_ptr);
             link_scope_to_nexus_signal(priv, scope, sig, pin);
          }
+
+ 
 
          nexus_signal_width = ivl_signal_width(sig);
       }
@@ -263,8 +264,9 @@ void draw_nexus(ivl_nexus_t nexus)
       }
       else if ((con = ivl_nexus_ptr_con(nexus_ptr))) {
          if (ivl_const_type(con) == IVL_VT_REAL) {
-            error("No VHDL translation for real constant (%g)",
-                  ivl_const_real(con));
+            // error("No VHDL translation for real constant (%g)",
+                  // ivl_const_real(con));
+            priv->const_driver = new vhdl_const_real(ivl_const_real(con));
             continue;
          }
          if (ivl_const_width(con) == 1)
@@ -305,7 +307,13 @@ void draw_nexus(ivl_nexus_t nexus)
          ;
       }
 
+      ivl_nexus_ptr_t ptr = ivl_nexus_ptr(nexus, 0);
+      ivl_signal_t sig = ivl_nexus_ptr_sig(ptr);
+
       if (def) {
+         if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
+            priv->const_driver = new vhdl_const_real(0.0);
+         } else
          if (width > 1)
             priv->const_driver =
                new vhdl_bit_spec_expr(vhdl_type::std_logic(),
@@ -500,6 +508,8 @@ static void avoid_name_collision(string& name, vhdl_scope* scope)
 static string genvar_unique_suffix(ivl_scope_t scope)
 {
    ostringstream suffix;
+
+
    while (scope && ivl_scope_type(scope) == IVL_SCT_GENERATE) {
       for (unsigned i = 0; i < ivl_scope_params(scope); i++) {
          ivl_parameter_t param = ivl_scope_param(scope, i);
@@ -525,7 +535,44 @@ static string genvar_unique_suffix(ivl_scope_t scope)
       scope = ivl_scope_parent(scope);
    }
 
+
    return suffix.str();
+}
+
+// Declare a single generic in a scope
+static void declare_one_generic(vhdl_entity *ent, ivl_parameter_t par)
+{
+   string name(ivl_parameter_basename(par));
+
+   vhdl_type *par_type;
+
+   ivl_expr_t value = ivl_parameter_expr(par);
+
+   switch (ivl_expr_type(value)) {
+      case IVL_EX_NUMBER:
+         par_type = vhdl_type::type_for(
+               ivl_parameter_width(par),
+               ivl_parameter_signed(par) != 0,
+               0, false);
+         break;
+      case IVL_EX_REALNUM:
+         par_type = vhdl_type::real();
+         break;
+      case IVL_EX_STRING:
+         par_type = vhdl_type::string();
+         break;
+      default:
+         error("Unsupported generic data type");
+         assert(false);
+   }
+
+   vhdl_generic_decl *decl =
+      new vhdl_generic_decl(name.c_str(), par_type);
+
+   vhdl_expr *rhs = translate_expr(value, true);
+   decl->set_initial(rhs);
+
+   ent->add_generic(decl);
 }
 
 // Declare a single signal in a scope
@@ -553,9 +600,15 @@ static void declare_one_signal(vhdl_entity *ent, ivl_signal_t sig,
       }
 
       string type_name = name + "_Type";
-      vhdl_type *base_type =
-         vhdl_type::type_for(ivl_signal_width(sig), ivl_signal_signed(sig) != 0);
 
+      vhdl_type *base_type;
+
+      if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
+         base_type = vhdl_type::real();
+      } else {
+         base_type = vhdl_type::type_for(ivl_signal_width(sig), 
+             ivl_signal_signed(sig) != 0);
+      }
       int lsb = ivl_signal_array_base(sig);
       int msb = lsb + ivl_signal_array_count(sig) - 1;
 
@@ -565,6 +618,9 @@ static void declare_one_signal(vhdl_entity *ent, ivl_signal_t sig,
       ent->get_arch()->get_scope()->add_decl(array_decl);
 
       sig_type = new vhdl_type(*array_type);
+   }
+   else if (ivl_signal_data_type(sig) == IVL_VT_REAL) {
+      sig_type = vhdl_type::real();
    }
    else {
       sig_type = vhdl_type::type_for(ivl_signal_width(sig),
@@ -594,14 +650,13 @@ static void declare_one_signal(vhdl_entity *ent, ivl_signal_t sig,
       }
          break;
    case IVL_SIP_INPUT:
-      ent->get_scope()->add_decl
-         (new vhdl_port_decl(name.c_str(), sig_type, VHDL_PORT_IN));
+      ent->add_port(new vhdl_port_decl(name.c_str(), sig_type, VHDL_PORT_IN));
       break;
    case IVL_SIP_OUTPUT:
       {
          vhdl_port_decl *decl =
             new vhdl_port_decl(name.c_str(), sig_type, VHDL_PORT_OUT);
-         ent->get_scope()->add_decl(decl);
+         ent->add_port(decl);
       }
 
       if (ivl_signal_type(sig) == IVL_SIT_REG) {
@@ -627,11 +682,22 @@ static void declare_one_signal(vhdl_entity *ent, ivl_signal_t sig,
          }
       break;
    case IVL_SIP_INOUT:
-      ent->get_scope()->add_decl
-         (new vhdl_port_decl(name.c_str(), sig_type, VHDL_PORT_INOUT));
+      ent->add_port(new vhdl_port_decl(name.c_str(),
+         sig_type, VHDL_PORT_INOUT));
       break;
    default:
       assert(false);
+   }
+}
+
+static void declare_generics(vhdl_entity *ent, ivl_scope_t scope)
+{
+   debug_msg("Declaring generics in scope type %s", ivl_scope_tname(scope));
+
+   int nparm = ivl_scope_params(scope);
+   for (int i = 0; i < nparm; i++) {
+      ivl_parameter_t par = ivl_scope_param(scope, i);
+      declare_one_generic(ent, par);
    }
 }
 
@@ -732,6 +798,59 @@ static void map_signal(ivl_signal_t to, vhdl_entity *parent,
 
    inst->map_port(name, map_to);
 }
+
+static void map_generic(ivl_parameter_t to, vhdl_entity *parent,
+                       vhdl_comp_inst *inst)
+{
+   const char *name = ivl_parameter_basename(to);
+
+   vhdl_scope *generics = parent->get_scope(VHDL_ENT_SCOPE_GENERICS);
+   // vhdl_decl* from_decl = generics->get_decl(name);
+
+   ivl_expr_t value = ivl_parameter_expr(to);
+   vhdl_expr *e = translate_expr(value, true);
+
+   debug_msg(" >>             '%s' to '%s'", name, e->to_string());
+
+
+   // vhdl_expr *map_to = from_decl->make_ref();
+   
+   decl_list_t decls = generics->get_decls();
+
+//   if (!from_decl) {
+//       debug_msg("Declaration '%s' not found i '%s'", name, inst->get_comp_name().c_str());
+//       for (decl_list_t::const_iterator it = decls.begin();
+//            it != decls.end();
+//            it++)
+//       {
+//             cout << (*it)->get_name() << "\n";
+//       }
+
+//       return;
+//   }
+
+   inst->map_generic(name, e);
+}
+
+
+/*
+ * Find all the generic mappings of a module instantiation.
+ */
+static void generic_map(ivl_scope_t scope, vhdl_entity *parent,
+                     vhdl_comp_inst *inst)
+{
+   debug_msg("map generics in %s (%s)", ivl_scope_tname(scope),
+             ivl_scope_name(scope));
+   //
+   // Find all the generic mappings
+   unsigned nparams = ivl_scope_params(scope);
+   for (unsigned i = 0; i < nparams; i++) {
+      ivl_parameter_t param = ivl_scope_param(scope, i);
+         map_generic(param, parent, inst);
+
+   }
+}
+
 
 /*
  * Find all the port mappings of a module instantiation.
@@ -935,10 +1054,11 @@ static void create_skeleton_entity_for(ivl_scope_t scope, int depth)
       << " (" << ivl_scope_def_file(scope) << ":"
       << ivl_scope_def_lineno(scope) << ")";
 
+#if 0
    unsigned nparams = ivl_scope_params(scope);
    for (unsigned i = 0; i < nparams; i++) {
       ivl_parameter_t param = ivl_scope_param(scope, i);
-      ss << "\n  " << ivl_parameter_basename(param) << " = ";
+      ss << "\n  " << ivl_parameter_basename(param) << " := ";
 
       ivl_expr_t value = ivl_parameter_expr(param);
       switch (ivl_expr_type(value)) {
@@ -958,6 +1078,7 @@ static void create_skeleton_entity_for(ivl_scope_t scope, int depth)
          assert(false);
       }
    }
+#endif
 
    arch->set_comment(ss.str());
    ent->set_comment(ss.str());
@@ -995,6 +1116,20 @@ extern "C" int draw_skeleton_scope(ivl_scope_t scope, void *)
    int rc = ivl_scope_children(scope, draw_skeleton_scope, NULL);
    --depth;
    return rc;
+}
+
+extern "C" int draw_all_generics(ivl_scope_t scope, void *)
+{
+   if (!is_default_scope_instance(scope))
+      return 0;  // Not interested in this instance
+
+   if (ivl_scope_type(scope) == IVL_SCT_MODULE) {
+      vhdl_entity *ent = find_entity(scope);
+      assert(ent);
+
+      declare_generics(ent, scope);
+   }
+   return ivl_scope_children(scope, draw_all_generics, scope);
 }
 
 extern "C" int draw_all_signals(ivl_scope_t scope, void *)
@@ -1087,6 +1222,7 @@ extern "C" int draw_constant_drivers(ivl_scope_t scope, void *)
                assert(j == 0);   // TODO: Make work for more words
 
                vhdl_var_ref *ref = nexus_to_var_ref(arch_scope, nex);
+
 
                ent->get_arch()->add_stmt
                   (new vhdl_cassign_stmt(ref, priv->const_driver));
@@ -1214,7 +1350,10 @@ extern "C" int draw_hierarchy(ivl_scope_t scope, void *_parent)
 
       vhdl_comp_inst *inst =
          new vhdl_comp_inst(inst_name.c_str(), ent->get_name().c_str());
+
+      generic_map(scope, parent_ent, inst);
       port_map(scope, parent_ent, inst);
+
 
       ostringstream ss;
       ss << "Generated from instantiation at "
@@ -1230,6 +1369,10 @@ extern "C" int draw_hierarchy(ivl_scope_t scope, void *_parent)
 int draw_scope(ivl_scope_t scope, void *_parent)
 {
    int rc = draw_skeleton_scope(scope, _parent);
+   if (rc != 0)
+      return rc;
+
+   rc = draw_all_generics(scope, _parent);
    if (rc != 0)
       return rc;
 
